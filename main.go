@@ -50,7 +50,10 @@ func handle(w http.ResponseWriter, r *http.Request) {
 		j, _ := json.Marshal(inRequest)
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		fmt.Fprintf(w, "%s", j)
-	} else if r.Method == http.MethodGet {
+		return
+	}
+	
+	if r.Method == http.MethodGet {
 		var requests []RequestDTO
 		q := datastore.NewQuery("Request").Order("-TS")
 		_, err := q.GetAll(ctx, &requests)
@@ -61,6 +64,7 @@ func handle(w http.ResponseWriter, r *http.Request) {
 		j, _ := json.Marshal(requests)
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		fmt.Fprintf(w, "%s", j)
+		return
 	}
-
+	http.Error(w, "Method Not Allowed", 405)
 }
