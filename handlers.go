@@ -5,31 +5,52 @@
 package main
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
-	"strings"
+	"regexp"
 	"time"
 
+	"github.com/karl-gustav/gae-go-hello-worl/loraFieldTesterParser"
 	"google.golang.org/appengine"
 	"google.golang.org/appengine/datastore"
 )
 
-func main() {
+var (
+	payloadHexRegex = regexp.MustCompile(`"payload_hex":\s?"([^"]+)"`)
+)
+
+func Run() {
 	http.HandleFunc("/", handle)
 	appengine.Main()
 }
 
 type RequestDTO struct {
-	TS      time.Time
-	Body    string
-	Headers []Header
+	TS   time.Time
+	Body string
 }
 
-type Header struct {
-	Key   string
-	Value string
+func (r *RequestDTO) MarshalJSON() ([]byte, error) {
+	var parsed loraFieldTesterParser.LoraFieldTester
+	payload := payloadHexRegex.FindAllStringSubmatch(r.Body, 1)
+	if len(payload) > 0 {
+		hexBytes, err := hex.DecodeString(payload[0][1])
+		log.Printf("hex: % x", hexBytes)
+		if err == nil {
+			parsed = loraFieldTesterParser.ParseFieldTester(hexBytes)
+		}
+	}
+	type Alias RequestDTO
+	return json.Marshal(&struct {
+		Parsed loraFieldTesterParser.LoraFieldTester `json:"parsedPayload"`
+		*Alias
+	}{
+		Parsed: parsed,
+		Alias:  (*Alias)(r),
+	})
 }
 
 func handle(w http.ResponseWriter, r *http.Request) {
@@ -40,9 +61,6 @@ func handle(w http.ResponseWriter, r *http.Request) {
 		inRequest.TS = time.Now()
 		b, _ := ioutil.ReadAll(r.Body)
 		inRequest.Body = string(b)
-		for key, value := range r.Header {
-			inRequest.Headers = append(inRequest.Headers, Header{key, strings.Join(value, ", ")})
-		}
 		if _, err := datastore.Put(ctx, key, inRequest); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
